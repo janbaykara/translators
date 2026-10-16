@@ -445,6 +445,7 @@ var testCases = [
 				],
 				"abstractNote": "Join us for this week’s episode of the systemic stage where we discuss dramaturgy and pedagogy in the theater with another former professor of ours, Dr. Susanne Shawyer. Hear all about her theater for social change class, the importance of dramaturgy in the theatre, and how we can be more progressive in our rehearsal and educational spaces. Check out more information on Dr. Shawyer here: https://howlround.com/commons/susanne-shawyer And here: https://www.elon.edu/u/news/2019/01/25/shawyer-publishes-in-theatre-topics-and-theatre-journal Check out theatrical intimacy education here: https://www.theatricalintimacyed.com/ Learn more about Elon’s Dramaturgy program here: https://elondramaturgy.wordpress.com/author/edramaturg/ Plays mentioned in this episode : Moment by Deirdre Kinahan Indecent by Paula Vogel Detroit ‘67 by Dominique Morisseau Oil by Ella Hickson Books mentioned in this episode : Theatre for Community Conflict and Dialogue by Michael Rohd Theatre of Good Intentions by Dani Snyder - Young",
 				"audioFileType": "Audio",
+        "date": "2021-05-10",
 				"runningTime": "53:56",
 				"seriesTitle": "The Systemic Stage",
 				"url": "https://open.spotify.com/episode/5EIk9DNoblPfTIEdlpnqgF",
