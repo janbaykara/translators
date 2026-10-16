@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2026-10-15 15:40:38"
+	"lastUpdated": "2026-10-16 13:25:39"
 }
 
 /*
@@ -40,6 +40,40 @@
 // when Spotify rotates queries; embed metadata is the fallback.
 var EPISODE_QUERY_HASH = "0b4306ff996f0d8eb8520470fb312834f091b7812b8e744a990992d9509514fb";
 var SHOW_QUERY_HASH = "9f0d37dcbd1590c31e3afe321853e517e353535d7b738c9ba2a7946b5c6590ad";
+
+// Spotify web-player TOTP secret cipher (version 61). Transformed at runtime.
+var TOTP_VER = 61;
+var TOTP_CIPHER = [
+	44,
+	55,
+	47,
+	42,
+	70,
+	40,
+	34,
+	114,
+	76,
+	74,
+	50,
+	111,
+	120,
+	97,
+	75,
+	76,
+	94,
+	102,
+	43,
+	69,
+	49,
+	120,
+	118,
+	80,
+	64,
+	78
+];
+
+var TRANSCRIPT_TIMESTAMP_MOD = 5;
+var cachedSpotifyToken = null;
 
 function detectWeb(doc, url) {
 	if (/\/episode\/[A-Za-z0-9]+/.test(url)) {
@@ -121,6 +155,19 @@ async function scrape(doc, url = doc.location.href) {
 			mimeType: "text/html"
 		});
 	}
+
+	// "Read along" transcripts: needs a logged-in Spotify session (sp_dc →
+	// non-anonymous /api/token). Anonymous tokens always 401; episodes without
+	// a transcript tab return empty/error. Either way we skip quietly.
+	let transcriptHTML = await fetchTranscriptHTML(url, item.title);
+	if (transcriptHTML) {
+		item.attachments.push({
+			title: "Transcript",
+			mimeType: "text/html",
+			document: new DOMParser().parseFromString(transcriptHTML, "text/html")
+		});
+	}
+
 	item.complete();
 }
 
@@ -236,11 +283,29 @@ function parseEpisodeJSONLD(doc, url) {
 	return null;
 }
 
-var cachedSpotifyToken = null;
-
-async function getAnonymousToken(url) {
+async function getAccessToken(url) {
 	if (cachedSpotifyToken) return cachedSpotifyToken;
-	// Embed pages expose an anonymous access token in __NEXT_DATA__.
+
+	// Prefer /api/token so Connector cookies (sp_dc) yield a logged-in token
+	// when the user is signed into Spotify. Needed for transcripts.
+	try {
+		let otp = await generateSpotifyTOTP();
+		if (otp) {
+			let tokenURL = "https://open.spotify.com/api/token"
+				+ "?reason=init&productType=web-player"
+				+ "&totp=" + otp
+				+ "&totpServer=" + otp
+				+ "&totpVer=" + TOTP_VER;
+			let json = await requestJSON(tokenURL);
+			if (json && json.accessToken) {
+				cachedSpotifyToken = json.accessToken;
+				return cachedSpotifyToken;
+			}
+		}
+	}
+	catch (e) {}
+
+	// Fallback: anonymous token from embed __NEXT_DATA__.
 	let episodeID = spotifyID(url || "", "episode");
 	let showID = spotifyID(url || "", "show");
 	let embedURL = episodeID
@@ -249,10 +314,10 @@ async function getAnonymousToken(url) {
 			? "https://open.spotify.com/embed/show/" + showID
 			: null;
 	if (!embedURL) return null;
-	let html = await requestText(embedURL);
-	let match = html.match(/<script id="__NEXT_DATA__" type="application\/json">([^<]+)<\/script>/);
-	if (!match) return null;
 	try {
+		let html = await requestText(embedURL);
+		let match = html.match(/<script id="__NEXT_DATA__" type="application\/json">([^<]+)<\/script>/);
+		if (!match) return null;
 		let next = JSON.parse(match[1]);
 		cachedSpotifyToken = next.props.pageProps.state.settings.session.accessToken || null;
 		return cachedSpotifyToken;
@@ -262,8 +327,73 @@ async function getAnonymousToken(url) {
 	}
 }
 
+async function generateSpotifyTOTP() {
+	if (!globalThis.crypto || !crypto.subtle) return null;
+	let transformed = TOTP_CIPHER.map((e, t) => e ^ ((t % 33) + 9));
+	let joined = transformed.join("");
+	let hex = Array.from(new TextEncoder().encode(joined),
+		b => b.toString(16).padStart(2, "0")).join("");
+	let secretBytes = new Uint8Array(hex.match(/.{2}/g).map(h => parseInt(h, 16)));
+	let secretB32 = base32Encode(secretBytes);
+	let keyBytes = base32Decode(secretB32);
+	let key = await crypto.subtle.importKey(
+		"raw",
+		keyBytes,
+		{ name: "HMAC", hash: "SHA-1" },
+		false,
+		["sign"]
+	);
+	let counter = Math.floor(Date.now() / 1000 / 30);
+	let buf = new ArrayBuffer(8);
+	new DataView(buf).setUint32(4, counter);
+	let sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, buf));
+	let offset = sig[sig.length - 1] & 0xf;
+	let code = ((sig[offset] & 0x7f) << 24
+		| sig[offset + 1] << 16
+		| sig[offset + 2] << 8
+		| sig[offset + 3]) % 1e6;
+	return String(code).padStart(6, "0");
+}
+
+function base32Encode(bytes) {
+	let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+	let bits = 0;
+	let value = 0;
+	let output = "";
+	for (let b of bytes) {
+		value = (value << 8) | b;
+		bits += 8;
+		while (bits >= 5) {
+			output += alphabet[(value >>> (bits - 5)) & 31];
+			bits -= 5;
+		}
+	}
+	if (bits > 0) {
+		output += alphabet[(value << (5 - bits)) & 31];
+	}
+	return output;
+}
+
+function base32Decode(str) {
+	let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+	let bits = 0;
+	let value = 0;
+	let out = [];
+	for (let c of str.replace(/=+$/, "").toUpperCase()) {
+		let idx = alphabet.indexOf(c);
+		if (idx < 0) continue;
+		value = (value << 5) | idx;
+		bits += 5;
+		if (bits >= 8) {
+			out.push((value >>> (bits - 8)) & 255);
+			bits -= 8;
+		}
+	}
+	return new Uint8Array(out);
+}
+
 async function pathfinderQuery(operationName, sha256Hash, variables, url) {
-	let token = await getAnonymousToken(url);
+	let token = await getAccessToken(url);
 	if (!token) return null;
 	try {
 		return await requestJSON("https://api-partner.spotify.com/pathfinder/v2/query", {
@@ -399,6 +529,205 @@ async function fetchShowEpisodesFromPathfinder(showID) {
 	return found ? items : false;
 }
 
+async function fetchTranscriptHTML(url, title) {
+	let episodeID = spotifyID(url, "episode");
+	if (!episodeID) return null;
+	let token = await getAccessToken(url);
+	if (!token) return null;
+
+	let json;
+	try {
+		json = await requestJSON(
+			"https://spclient.wg.spotify.com/transcript-read-along/v2/episode/"
+				+ episodeID
+				+ "?format=json&maxSentenceLength=500&excludeCC=true",
+			{
+				headers: {
+					authorization: "Bearer " + token,
+					accept: "application/json",
+					"app-platform": "WebPlayer",
+					Referer: "https://open.spotify.com/"
+				}
+			}
+		);
+	}
+	catch (e) {
+		return null;
+	}
+
+	let lines = parseTranscriptLines(json);
+	if (!lines.length) return null;
+	return formatTranscriptHtml(lines, url, title || "Spotify Transcript");
+}
+
+function parseTranscriptLines(body) {
+	if (!body || typeof body !== "object") return [];
+	let cues = body.section;
+	if (!Array.isArray(cues)) {
+		for (let key of ["segments", "timedText", "lines", "cues"]) {
+			if (Array.isArray(body[key])) {
+				cues = body[key];
+				break;
+			}
+		}
+	}
+	if (!Array.isArray(cues)) return [];
+
+	let lines = [];
+	for (let cue of cues) {
+		if (!cue || typeof cue !== "object") continue;
+		let line = cueToLine(cue);
+		if (line) lines.push(line);
+	}
+	return lines;
+}
+
+function cueToLine(cue) {
+	for (let wrapperKey of ["text", "fallback"]) {
+		let wrapper = cue[wrapperKey];
+		if (!wrapper || typeof wrapper !== "object") continue;
+		let sentence = wrapper.sentence;
+		if (!sentence || typeof sentence !== "object") continue;
+		let text = sentence.text;
+		if (typeof text !== "string" || !text.trim()) continue;
+		let start = Number(
+			sentence.startMs !== undefined && sentence.startMs !== null
+				? sentence.startMs
+				: cue.startMs
+		) || 0;
+		return { offset: start, text: text.trim() };
+	}
+	return null;
+}
+
+function formatTranscriptHtml(lines, url, title) {
+	if (!lines || !lines.length) return "";
+	let safeTitle = escapeHtml(ZU.trimInternal(title) || "Spotify Transcript");
+	let today = new Date().toISOString().slice(0, 10);
+	let sourceHref = escapeHtml(url || "");
+	let mod = TRANSCRIPT_TIMESTAMP_MOD;
+
+	let bodyRows = lines.map((line, index) => {
+		let showTimestamp = index % mod === 0;
+		let timestamp = formatTimestampMs(line.offset);
+		let seconds = Math.max(0, Math.floor(line.offset / 1000));
+		let href = url
+			? escapeHtml(url + (url.includes("?") ? "&" : "?") + "t=" + seconds)
+			: "#";
+		let text = escapeHtml(line.text);
+		let anchor = "sp-l-" + Math.max(0, Math.floor(line.offset));
+		let tsCell = showTimestamp
+			? `<td class="ts"><a href="${href}" data-time="${escapeHtml(timestamp)}" aria-label="${escapeHtml(timestamp)}"></a></td>`
+			: `<td class="ts"></td>`;
+		return `    <tr>
+      ${tsCell}
+      <td class="text" id="${anchor}">${text}</td>
+    </tr>`;
+	}).join("\n");
+
+	return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>${safeTitle}</title>
+<style>
+  :root {
+    color-scheme: light dark;
+  }
+  body {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    line-height: 1.55;
+    max-width: 48rem;
+    margin: 0 auto;
+    padding: 1.5rem 1.25rem 3rem;
+  }
+  h1 {
+    font-size: 1.35rem;
+    margin: 0 0 0.75rem;
+    line-height: 1.3;
+  }
+  .meta {
+    color: CanvasText;
+    opacity: 0.7;
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+  }
+  .meta a {
+    color: inherit;
+  }
+  table.transcript {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  table.transcript td {
+    vertical-align: top;
+    padding: 0.35rem 0;
+  }
+  table.transcript td.ts {
+    width: 1%;
+    white-space: nowrap;
+    padding-right: 0.85rem;
+    user-select: none;
+    -moz-user-select: none;
+    -webkit-user-select: none;
+  }
+  table.transcript td.ts a {
+    font-variant-numeric: tabular-nums;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  table.transcript td.ts a::before {
+    content: attr(data-time);
+  }
+  table.transcript td.ts a:hover {
+    text-decoration: underline;
+  }
+  table.transcript td.text {
+    width: 99%;
+  }
+</style>
+</head>
+<body>
+<article>
+  <h1>${safeTitle}</h1>
+  <p class="meta">
+    Source: ${url ? `<a href="${sourceHref}">${sourceHref}</a>` : "Unknown"}
+    · Retrieved: ${escapeHtml(today)}
+  </p>
+  <table class="transcript">
+    <tbody>
+${bodyRows}
+    </tbody>
+  </table>
+</article>
+</body>
+</html>
+`;
+}
+
+function formatTimestampMs(ms) {
+	if (!ms || ms < 0 || !isFinite(ms)) return "00:00";
+	let totalSeconds = Math.floor(ms / 1000);
+	let hours = Math.floor(totalSeconds / 3600);
+	let minutes = Math.floor((totalSeconds % 3600) / 60);
+	let seconds = totalSeconds % 60;
+	let pad = n => String(n).padStart(2, "0");
+	if (hours > 0) {
+		return hours + ":" + pad(minutes) + ":" + pad(seconds);
+	}
+	return pad(minutes) + ":" + pad(seconds);
+}
+
+function escapeHtml(text) {
+	return String(text || "")
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#39;");
+}
+
 function cleanDescription(description, seriesTitle) {
 	if (!description) return "";
 	let cleaned = ZU.trimInternal(description);
@@ -445,10 +774,41 @@ var testCases = [
 				],
 				"abstractNote": "Join us for this week’s episode of the systemic stage where we discuss dramaturgy and pedagogy in the theater with another former professor of ours, Dr. Susanne Shawyer. Hear all about her theater for social change class, the importance of dramaturgy in the theatre, and how we can be more progressive in our rehearsal and educational spaces. Check out more information on Dr. Shawyer here: https://howlround.com/commons/susanne-shawyer And here: https://www.elon.edu/u/news/2019/01/25/shawyer-publishes-in-theatre-topics-and-theatre-journal Check out theatrical intimacy education here: https://www.theatricalintimacyed.com/ Learn more about Elon’s Dramaturgy program here: https://elondramaturgy.wordpress.com/author/edramaturg/ Plays mentioned in this episode : Moment by Deirdre Kinahan Indecent by Paula Vogel Detroit ‘67 by Dominique Morisseau Oil by Ella Hickson Books mentioned in this episode : Theatre for Community Conflict and Dialogue by Michael Rohd Theatre of Good Intentions by Dani Snyder - Young",
 				"audioFileType": "Audio",
-        "date": "2021-05-10",
 				"runningTime": "53:56",
 				"seriesTitle": "The Systemic Stage",
 				"url": "https://open.spotify.com/episode/5EIk9DNoblPfTIEdlpnqgF",
+				"attachments": [
+					{
+						"title": "Snapshot",
+						"mimeType": "text/html"
+					}
+				],
+				"tags": [],
+				"notes": [],
+				"seeAlso": []
+			}
+		]
+	},
+	{
+		"type": "web",
+		"url": "https://open.spotify.com/episode/6P9Sbi8yVsxC9pVdJO29AN",
+		"items": [
+			{
+				"itemType": "podcast",
+				"title": "On Politics: What happened to the intellectual?",
+				"creators": [
+					{
+						"lastName": "The LRB Podcast",
+						"creatorType": "podcaster",
+						"fieldMode": 1
+					}
+				],
+				"abstractNote": "William Davies joins James to consider what distinguishes intellectuals from the technocrats, academics, experts, polemicists, thought leaders, gurus and utopians who compete for our attention, and to ask whether there’s still a role for them in the public realm. They look back to Weber's and Gramsci’s ideas about the autonomy and responsibility of the intellectual and discuss the ways in which Hayek’s anti-intellectualism has shaped discourse up to the present day. Where do politicians look for ideas and does the modern marketplace of algorithmic video platforms pose a challenge to independent thought? From the LRB Subscribe to the LRB: ⁠⁠https://lrb.me/subslrbpod Close Readings podcast: ⁠https://lrb.me/crlrbpod⁠ LRB Audiobooks: ⁠https://lrb.me/audiobookslrbpod⁠ Bags, binders and more at the LRB Store: ⁠https://lrb.me/storelrbpod⁠ Get in touch: podcasts@lrb.co.uk Learn more about your ad choices. Visit megaphone.fm/adchoices",
+				"audioFileType": "Audio",
+				"runningTime": "1:05:16",
+				"seriesTitle": "The LRB Podcast",
+				"shortTitle": "On Politics",
+				"url": "https://open.spotify.com/episode/6P9Sbi8yVsxC9pVdJO29AN",
 				"attachments": [
 					{
 						"title": "Snapshot",
