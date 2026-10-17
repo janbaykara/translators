@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2026-10-16 13:25:39"
+	"lastUpdated": "2026-10-17 00:25:30"
 }
 
 /*
@@ -620,9 +620,9 @@ function formatTranscriptHtml(lines, url, title) {
 			? `<td class="ts"><a href="${href}" data-time="${escapeHtml(timestamp)}" aria-label="${escapeHtml(timestamp)}"></a></td>`
 			: `<td class="ts"></td>`;
 		return `    <tr>
-      ${tsCell}
-      <td class="text" id="${anchor}">${text}</td>
-    </tr>`;
+	  ${tsCell}
+	  <td class="text" id="${anchor}">${text}</td>
+	</tr>`;
 	}).join("\n");
 
 	return `<!DOCTYPE html>
@@ -632,59 +632,59 @@ function formatTranscriptHtml(lines, url, title) {
 <title>${safeTitle}</title>
 <style>
   :root {
-    color-scheme: light dark;
+	color-scheme: light dark;
   }
   body {
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-    line-height: 1.55;
-    max-width: 48rem;
-    margin: 0 auto;
-    padding: 1.5rem 1.25rem 3rem;
+	font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+	line-height: 1.55;
+	max-width: 48rem;
+	margin: 0 auto;
+	padding: 1.5rem 1.25rem 3rem;
   }
   h1 {
-    font-size: 1.35rem;
-    margin: 0 0 0.75rem;
-    line-height: 1.3;
+	font-size: 1.35rem;
+	margin: 0 0 0.75rem;
+	line-height: 1.3;
   }
   .meta {
-    color: CanvasText;
-    opacity: 0.7;
-    font-size: 0.9rem;
-    margin-bottom: 1.5rem;
+	color: CanvasText;
+	opacity: 0.7;
+	font-size: 0.9rem;
+	margin-bottom: 1.5rem;
   }
   .meta a {
-    color: inherit;
+	color: inherit;
   }
   table.transcript {
-    width: 100%;
-    border-collapse: collapse;
+	width: 100%;
+	border-collapse: collapse;
   }
   table.transcript td {
-    vertical-align: top;
-    padding: 0.35rem 0;
+	vertical-align: top;
+	padding: 0.35rem 0;
   }
   table.transcript td.ts {
-    width: 1%;
-    white-space: nowrap;
-    padding-right: 0.85rem;
-    user-select: none;
-    -moz-user-select: none;
-    -webkit-user-select: none;
+	width: 1%;
+	white-space: nowrap;
+	padding-right: 0.85rem;
+	user-select: none;
+	-moz-user-select: none;
+	-webkit-user-select: none;
   }
   table.transcript td.ts a {
-    font-variant-numeric: tabular-nums;
-    text-decoration: none;
-    font-weight: 600;
-    font-size: 0.9rem;
+	font-variant-numeric: tabular-nums;
+	text-decoration: none;
+	font-weight: 600;
+	font-size: 0.9rem;
   }
   table.transcript td.ts a::before {
-    content: attr(data-time);
+	content: attr(data-time);
   }
   table.transcript td.ts a:hover {
-    text-decoration: underline;
+	text-decoration: underline;
   }
   table.transcript td.text {
-    width: 99%;
+	width: 99%;
   }
 </style>
 </head>
@@ -692,13 +692,13 @@ function formatTranscriptHtml(lines, url, title) {
 <article>
   <h1>${safeTitle}</h1>
   <p class="meta">
-    Source: ${url ? `<a href="${sourceHref}">${sourceHref}</a>` : "Unknown"}
-    · Retrieved: ${escapeHtml(today)}
+	Source: ${url ? `<a href="${sourceHref}">${sourceHref}</a>` : "Unknown"}
+	· Retrieved: ${escapeHtml(today)}
   </p>
   <table class="transcript">
-    <tbody>
+	<tbody>
 ${bodyRows}
-    </tbody>
+	</tbody>
   </table>
 </article>
 </body>
@@ -772,6 +772,7 @@ var testCases = [
 						"fieldMode": 1
 					}
 				],
+				"date": "2021-05-10",
 				"abstractNote": "Join us for this week’s episode of the systemic stage where we discuss dramaturgy and pedagogy in the theater with another former professor of ours, Dr. Susanne Shawyer. Hear all about her theater for social change class, the importance of dramaturgy in the theatre, and how we can be more progressive in our rehearsal and educational spaces. Check out more information on Dr. Shawyer here: https://howlround.com/commons/susanne-shawyer And here: https://www.elon.edu/u/news/2019/01/25/shawyer-publishes-in-theatre-topics-and-theatre-journal Check out theatrical intimacy education here: https://www.theatricalintimacyed.com/ Learn more about Elon’s Dramaturgy program here: https://elondramaturgy.wordpress.com/author/edramaturg/ Plays mentioned in this episode : Moment by Deirdre Kinahan Indecent by Paula Vogel Detroit ‘67 by Dominique Morisseau Oil by Ella Hickson Books mentioned in this episode : Theatre for Community Conflict and Dialogue by Michael Rohd Theatre of Good Intentions by Dani Snyder - Young",
 				"audioFileType": "Audio",
 				"runningTime": "53:56",
@@ -803,6 +804,7 @@ var testCases = [
 						"fieldMode": 1
 					}
 				],
+				"date": "2026-09-23",
 				"abstractNote": "William Davies joins James to consider what distinguishes intellectuals from the technocrats, academics, experts, polemicists, thought leaders, gurus and utopians who compete for our attention, and to ask whether there’s still a role for them in the public realm. They look back to Weber's and Gramsci’s ideas about the autonomy and responsibility of the intellectual and discuss the ways in which Hayek’s anti-intellectualism has shaped discourse up to the present day. Where do politicians look for ideas and does the modern marketplace of algorithmic video platforms pose a challenge to independent thought? From the LRB Subscribe to the LRB: ⁠⁠https://lrb.me/subslrbpod Close Readings podcast: ⁠https://lrb.me/crlrbpod⁠ LRB Audiobooks: ⁠https://lrb.me/audiobookslrbpod⁠ Bags, binders and more at the LRB Store: ⁠https://lrb.me/storelrbpod⁠ Get in touch: podcasts@lrb.co.uk Learn more about your ad choices. Visit megaphone.fm/adchoices",
 				"audioFileType": "Audio",
 				"runningTime": "1:05:16",
